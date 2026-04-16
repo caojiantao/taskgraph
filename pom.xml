@@ -12,6 +12,14 @@
     <name>taskgraph</name>
     <description>TaskGraph is a single-node DAG execution kernel for Java.</description>
 
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <modules>
         <module>taskgraph-kernel</module>
     </modules>
