@@ -1,4 +1,4 @@
-## Why
+## 背景
 
 当前 `taskgraph-kernel` 已经完成单机 DAG 调度内核的首版实现，但在 Spring 应用中，用户仍然缺少一种既有框架感、又不破坏内核边界的声明方式。
 
@@ -13,7 +13,7 @@
 
 同时，这套 Spring DSL 仍然必须建立在已归档的内核规范之上，不能长出第二套执行语义。
 
-## What Changes
+## 变更内容
 
 - 新增 `taskgraph-spring` 方向的 OpenSpec change。
 - 定义“图接口 + 任务实现类”的 Spring 注解 DSL。
@@ -23,17 +23,17 @@
 - 明确采用“先扫描图接口，再按图接口从容器收集实现 Bean”的启动期装配策略。
 - 当前阶段以纯 Spring 接入为主，`@EnableTaskGraph` 作为标准启用入口。
 
-## Capabilities
+## 能力范围
 
-### New Capabilities
+### 新增能力
 
 - `spring-integration`：提供 `taskgraph` 在 Spring 容器中的注解式图声明、启动期图编译、自动注册与按 `context` 执行能力。
 
-### Modified Capabilities
+### 变更能力
 
 - 无。
 
-## Impact
+## 影响范围
 
 - 将新增 `taskgraph-spring` 模块。
 - 需要引入 Spring 注解 DSL、启动期图解析器与自动注册逻辑。

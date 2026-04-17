@@ -1,9 +1,9 @@
-# spring-integration Specification
+# Spring 接入规范
 
 ## Purpose
-定义 `taskgraph` 在 Spring 容器中的注解式图声明、启动期图编译、自动注册与按 `context` 执行规范。
+定义 `taskgraph` 在 Spring 容器中的注解式图声明、启动期图编译、自动注册与按 `context` 执行能力，并明确该接入层必须复用内核既有的调度、失败传播、超时处理与结果收敛语义。
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: 纯 Spring 场景必须通过 `@EnableTaskGraph` 显式开启
 
