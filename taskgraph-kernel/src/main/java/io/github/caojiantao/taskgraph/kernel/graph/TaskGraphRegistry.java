@@ -42,6 +42,17 @@ public final class TaskGraphRegistry {
     }
 
     /**
+     * 返回指定 `graphId` 对应的图定义；若不存在则返回 `null`。
+     *
+     * @param graphId 图标识
+     * @return 图定义或 `null`
+     */
+    public TaskGraph<?> get(String graphId) {
+        Objects.requireNonNull(graphId, "graphId must not be null");
+        return graphMap.get(graphId);
+    }
+
+    /**
      * 返回当前注册表中的全部图定义快照。
      *
      * @return 不可变图定义集合

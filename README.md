@@ -8,6 +8,8 @@
 
 - `taskgraph-kernel`
   单机 DAG 调度内核，负责图定义、图校验、图注册、任务调度、失败传播、超时控制与执行结果汇总。
+- `taskgraph-spring`
+  纯 Spring 接入层，负责注解 DSL、启动期图编译注册和按 `context` 执行。
 
 ## 当前能力
 
@@ -21,13 +23,13 @@
 
 ## 快速开始
 
-下面是一段从创建上下文到拿到执行结果的完整示例：
+### 基础使用
 
 ```java
 ExecutorService executor = Executors.newFixedThreadPool(4);
 ExecutorService promotionExecutor = Executors.newFixedThreadPool(2);
 
-// 1. 先准备业务上下文，任务执行过程中会直接往这里写结果。
+// 1. 准备上下文。
 Map<String, Object> context = new ConcurrentHashMap<>();
 
 // 2. 定义 DAG。
@@ -42,31 +44,95 @@ TaskGraph<Map<String, Object>> graph = TaskGraph.<Map<String, Object>>builder()
         .addTask(TaskDefinition.<Map<String, Object>>builder()
                 .taskId("promotion")
                 .dependsOn("product")
-                .executor(promotionExecutor) // 可选：任务级专属线程池，会覆盖图级 executor。
-                .timeoutMillis(200L) // 可选：任务级超时，会覆盖默认任务超时常量。
-                .errorHandler((ctx, ex) -> ctx.put("promotionFallback", "default-coupon")) // 可选：任务失败回调。
+                .executor(promotionExecutor)
+                .timeoutMillis(200L)
+                .errorHandler((ctx, ex) -> ctx.put("promotionFallback", "default-coupon"))
                 .handler(ctx -> ctx.put("promotion", "coupon"))
                 .build())
         .build();
 
-// 3. 可选：如果应用里会维护多张图，可以先注册，便于统一管理。
-TaskGraphRegistry registry = new TaskGraphRegistry();
-registry.register(graph);
-
-// 4. 显式构造执行请求并获取结果。
+// 3. 构造执行请求。
 GraphExecutionRequest<Map<String, Object>> request = GraphExecutionRequest.<Map<String, Object>>builder()
         .graph(graph)
         .context(context)
         .build();
 
-// 5. 执行图并获取结果。
-GraphExecutionResult result = GraphExecutors.defaultExecutor()
-        .execute(request);
+// 4. 执行图并获取结果。
+GraphExecutionResult result = new DefaultGraphExecutor().execute(request);
+```
+
+### Spring 使用
+
+`taskgraph-spring` 会在容器启动阶段把图接口和任务实现类编译成 `taskgraph-kernel` 的 `TaskGraph`；Spring 层只负责声明、扫描和注册，不重新定义失败传播、超时处理与执行结果语义。
+
+```java
+// 配置类
+@Configuration
+@EnableTaskGraph
+@ComponentScan("com.example.taskgraph")
+public class TaskGraphConfig {
+
+    @Bean(destroyMethod = "shutdownNow")
+    public ExecutorService detailExecutor() {
+        return Executors.newFixedThreadPool(4);
+    }
+}
+
+// 图接口
+@TaskGraphDefinition(
+        graphId = "detail-page",
+        executor = "detailExecutor",
+        timeoutMillis = 1000L
+)
+public interface DetailGraph extends GraphTask<DetailContext> {
+}
+
+// 任务节点 1
+@Component
+@TaskNodeDefinition(taskId = "product")
+public class ProductTask implements DetailGraph {
+
+    @Override
+    public void handle(DetailContext context) {
+        context.put("product", "iPhone");
+    }
+}
+
+// 任务节点 2
+@Component
+@TaskNodeDefinition(taskId = "promotion", dependsOn = {"product"})
+public class PromotionTask implements DetailGraph {
+
+    @Override
+    public void handle(DetailContext context) {
+        context.put("promotion", "coupon");
+    }
+
+    @Override
+    public void onError(DetailContext context, Throwable cause) {
+        context.put("promotionFallback", "default-coupon");
+    }
+}
+
+// 业务调用
+@Component
+public class DetailService {
+
+    private final TaskGraphTemplate taskGraphTemplate;
+
+    public DetailService(TaskGraphTemplate taskGraphTemplate) {
+        this.taskGraphTemplate = taskGraphTemplate;
+    }
+
+    public GraphExecutionResult load() {
+        DetailContext context = new DetailContext();
+        return taskGraphTemplate.execute(context);
+    }
+}
 ```
 
 ## 后续展望
 
-- Spring 接入与自动装配
 - 监控与运行时可观测性
 - 线程池治理与参数动态下发
 - 更丰富的测试样例和最佳实践

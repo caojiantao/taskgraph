@@ -22,6 +22,7 @@
 
     <modules>
         <module>taskgraph-kernel</module>
+        <module>taskgraph-spring</module>
     </modules>
 
     <properties>
@@ -30,6 +31,7 @@
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <lombok.version>1.18.38</lombok.version>
+        <spring.version>5.3.39</spring.version>
         <junit.version>5.12.2</junit.version>
         <assertj.version>3.27.3</assertj.version>
         <maven.compiler.plugin.version>3.14.0</maven.compiler.plugin.version>
@@ -46,6 +48,21 @@
                 <groupId>org.projectlombok</groupId>
                 <artifactId>lombok</artifactId>
                 <version>${lombok.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-context</artifactId>
+                <version>${spring.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-aop</artifactId>
+                <version>${spring.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-test</artifactId>
+                <version>${spring.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.junit.jupiter</groupId>
