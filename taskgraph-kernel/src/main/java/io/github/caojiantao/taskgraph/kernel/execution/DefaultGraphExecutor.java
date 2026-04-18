@@ -8,16 +8,31 @@ import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskNodeRuntime;
 import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskNodeRuntimeStatus;
 import io.github.caojiantao.taskgraph.kernel.internal.scheduler.TaskDispatcher;
 import io.github.caojiantao.taskgraph.kernel.internal.support.KernelDefaults;
+import io.github.caojiantao.taskgraph.kernel.internal.timeout.TaskTimeoutWatcher;
 import io.github.caojiantao.taskgraph.kernel.internal.timeout.TimeoutSchedulerHolder;
+import io.github.caojiantao.taskgraph.kernel.observation.GraphObservationDispatcher;
+import io.github.caojiantao.taskgraph.kernel.observation.NoOpGraphObservationDispatcher;
+import io.github.caojiantao.taskgraph.kernel.observation.event.graph.GraphFinishedEvent;
+import io.github.caojiantao.taskgraph.kernel.observation.event.graph.GraphStartedEvent;
+import io.github.caojiantao.taskgraph.kernel.observation.event.graph.GraphTimedOutEvent;
+import io.github.caojiantao.taskgraph.kernel.observation.event.task.TaskFailedEvent;
+import io.github.caojiantao.taskgraph.kernel.observation.event.task.TaskSkippedEvent;
+import io.github.caojiantao.taskgraph.kernel.observation.event.task.TaskStartedEvent;
+import io.github.caojiantao.taskgraph.kernel.observation.event.task.TaskSubmissionFailedEvent;
+import io.github.caojiantao.taskgraph.kernel.observation.event.task.TaskSucceededEvent;
 import io.github.caojiantao.taskgraph.kernel.result.GraphExecutionResult;
 import io.github.caojiantao.taskgraph.kernel.result.GraphRuntimeState;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.UUID;
 
 /**
  * 默认同步图执行器。
@@ -25,13 +40,25 @@ import java.util.concurrent.TimeUnit;
 public final class DefaultGraphExecutor implements GraphExecutor {
 
     private final ScheduledExecutorService timeoutScheduler;
+    private final GraphObservationDispatcher observationDispatcher;
 
     public DefaultGraphExecutor() {
-        this(TimeoutSchedulerHolder.getInstance());
+        this(TimeoutSchedulerHolder.getInstance(), NoOpGraphObservationDispatcher.getInstance());
+    }
+
+    public DefaultGraphExecutor(GraphObservationDispatcher observationDispatcher) {
+        this(TimeoutSchedulerHolder.getInstance(), observationDispatcher);
     }
 
     public DefaultGraphExecutor(ScheduledExecutorService timeoutScheduler) {
+        this(timeoutScheduler, NoOpGraphObservationDispatcher.getInstance());
+    }
+
+    public DefaultGraphExecutor(ScheduledExecutorService timeoutScheduler,
+                                GraphObservationDispatcher observationDispatcher) {
         this.timeoutScheduler = Objects.requireNonNull(timeoutScheduler, "timeoutScheduler must not be null");
+        this.observationDispatcher = Objects.requireNonNull(observationDispatcher,
+                "observationDispatcher must not be null");
     }
 
     @Override
@@ -40,9 +67,15 @@ public final class DefaultGraphExecutor implements GraphExecutor {
         Objects.requireNonNull(request.getGraph(), "request graph must not be null");
         Objects.requireNonNull(request.getContext(), "request context must not be null");
 
-        GraphRuntime<C> graphRuntime = TaskDispatcher.createRuntime(request.getGraph(), request.getContext());
+        String executionId = UUID.randomUUID().toString();
+        long graphStartNanoTime = System.nanoTime();
+        GraphRuntime<C> graphRuntime = TaskDispatcher.createRuntime(executionId,
+                request.getGraph(),
+                request.getContext(),
+                graphStartNanoTime);
+        publishGraphStarted(graphRuntime);
         // 先提交所有根任务，再由主线程同步阻塞等待图自然完成或图级超时。
-        TaskDispatcher.submitRootTasks(graphRuntime, timeoutScheduler, this);
+        TaskDispatcher.submitRootTasks(graphRuntime, this);
 
         long graphTimeoutMillis = request.getGraph().getTimeoutMillis() != null
                 ? request.getGraph().getTimeoutMillis()
@@ -58,7 +91,9 @@ public final class DefaultGraphExecutor implements GraphExecutor {
 
         if (!completed) {
             // 图级超时一旦发生，先收敛图运行时状态，再尽力取消尚未完成的任务。
-            graphRuntime.markTimedOut();
+            if (graphRuntime.markTimedOut()) {
+                publishGraphTimedOut(graphRuntime, Duration.ofMillis(graphTimeoutMillis));
+            }
             TaskDispatcher.cancelRunningTasks(graphRuntime.getTaskNodeRuntimeMap().values());
         } else {
             resolveGraphStateOnMainThread(graphRuntime);
@@ -68,6 +103,7 @@ public final class DefaultGraphExecutor implements GraphExecutor {
         if (state == GraphRuntimeState.RUNNING) {
             throw new GraphExecutionException("graph execution finished without a terminal state");
         }
+        publishGraphFinished(graphRuntime, state);
         return GraphExecutionResult.of(state);
     }
 
@@ -78,12 +114,18 @@ public final class DefaultGraphExecutor implements GraphExecutor {
                 return;
             }
 
+            // 任务真正进入执行线程后再记录起始时间，这样事件 duration 只表示实际执行耗时。
+            taskRuntime.markStarted(System.nanoTime());
             TaskNode<C> taskNode = taskRuntime.getTaskNode();
+            // 开始事件除了表达“开始执行”，还会顺带对外暴露排队耗时。
+            publishTaskStarted(graphRuntime, taskNode.getTaskId());
+            registerTaskTimeoutWatcher(graphRuntime, taskRuntime);
             taskNode.getHandler().handle(graphRuntime.getContext());
 
             if (!taskRuntime.compareAndSetStatus(TaskNodeRuntimeStatus.RUNNING, TaskNodeRuntimeStatus.SUCCESS)) {
                 return;
             }
+            publishTaskSucceeded(graphRuntime, taskRuntime);
             onTaskFinished(graphRuntime, taskRuntime);
             // 只有当前任务成功完成，才有资格继续释放它的下游任务。
             releaseDownstream(graphRuntime, taskRuntime);
@@ -95,7 +137,7 @@ public final class DefaultGraphExecutor implements GraphExecutor {
             if (!taskRuntime.compareAndSetStatus(TaskNodeRuntimeStatus.RUNNING, TaskNodeRuntimeStatus.FAILED)) {
                 return;
             }
-            handleTaskFailure(graphRuntime, taskRuntime,
+            handleTaskExecutionFailure(graphRuntime, taskRuntime,
                     cause instanceof TaskExecutionException ? cause : new TaskExecutionException(
                             "task [" + taskRuntime.getTaskNode().getTaskId() + "] execution failed", cause));
         } finally {
@@ -105,7 +147,7 @@ public final class DefaultGraphExecutor implements GraphExecutor {
     }
 
     public <C> void onTaskTimeout(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime, Throwable cause) {
-        handleTaskFailure(graphRuntime, taskRuntime, cause);
+        handleTaskExecutionFailure(graphRuntime, taskRuntime, cause);
     }
 
     public <C> void onTaskSubmissionFailure(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime, Throwable cause) {
@@ -115,10 +157,16 @@ public final class DefaultGraphExecutor implements GraphExecutor {
         if (!taskRuntime.compareAndSetStatus(TaskNodeRuntimeStatus.RUNNING, TaskNodeRuntimeStatus.FAILED)) {
             return;
         }
-        handleTaskFailure(graphRuntime, taskRuntime, cause);
+        publishTaskSubmissionFailed(graphRuntime, taskRuntime, cause);
+        invokeErrorHandler(graphRuntime, taskRuntime, cause);
+        onTaskFinished(graphRuntime, taskRuntime);
+        skipDescendants(graphRuntime, taskRuntime.getTaskNode().getTaskId());
     }
 
-    protected <C> void handleTaskFailure(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime, Throwable cause) {
+    protected <C> void handleTaskExecutionFailure(GraphRuntime<C> graphRuntime,
+                                                  TaskNodeRuntime<C> taskRuntime,
+                                                  Throwable cause) {
+        publishTaskFailed(graphRuntime, taskRuntime, cause);
         invokeErrorHandler(graphRuntime, taskRuntime, cause);
         onTaskFinished(graphRuntime, taskRuntime);
         // 默认失败语义是“跳过失败任务的整个后继子图”，而不是立刻终止无关分支。
@@ -147,7 +195,7 @@ public final class DefaultGraphExecutor implements GraphExecutor {
             }
             int remaining = downstreamRuntime.getRemainingDependencies().decrementAndGet();
             if (remaining == 0) {
-                TaskDispatcher.submitTask(graphRuntime, downstreamRuntime, timeoutScheduler, this);
+                TaskDispatcher.submitTask(graphRuntime, downstreamRuntime, this);
             }
         }
     }
@@ -169,6 +217,7 @@ public final class DefaultGraphExecutor implements GraphExecutor {
                 }
                 // 只有还没开始执行的后继任务才会被标记成 SKIPPED，已运行中的任务不在这里强行改状态。
                 if (downstreamRuntime.compareAndSetStatus(TaskNodeRuntimeStatus.PENDING, TaskNodeRuntimeStatus.SKIPPED)) {
+                    publishTaskSkipped(graphRuntime, downstreamTaskId, currentTaskId);
                     onTaskFinished(graphRuntime, downstreamRuntime);
                     queue.addLast(downstreamTaskId);
                 }
@@ -187,6 +236,19 @@ public final class DefaultGraphExecutor implements GraphExecutor {
         graphRuntime.getCompletionLatch().countDown();
     }
 
+    private <C> void registerTaskTimeoutWatcher(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime) {
+        Long timeoutMillis = taskRuntime.getTaskNode().getTimeoutMillis();
+        long effectiveTimeoutMillis = timeoutMillis != null
+                ? timeoutMillis
+                : KernelDefaults.DEFAULT_TASK_TIMEOUT_MILLIS;
+        // 任务 watcher 在真正进入执行线程后再启动，这样任务超时只统计实际执行耗时。
+        TaskTimeoutWatcher<C> watcher = new TaskTimeoutWatcher<>(graphRuntime, taskRuntime,
+                (runtime, runtimeTask, cause) -> onTaskTimeout(runtime, runtimeTask, cause));
+        ScheduledFuture<?> timeoutWatcher =
+                timeoutScheduler.schedule(watcher, effectiveTimeoutMillis, TimeUnit.MILLISECONDS);
+        taskRuntime.setTimeoutWatcher(timeoutWatcher);
+    }
+
     private <C> void resolveGraphStateOnMainThread(GraphRuntime<C> graphRuntime) {
         GraphRuntimeState finalState = GraphRuntimeState.SUCCESS;
         for (TaskNodeRuntime<C> taskRuntime : graphRuntime.getTaskNodeRuntimeMap().values()) {
@@ -198,5 +260,100 @@ public final class DefaultGraphExecutor implements GraphExecutor {
         }
         // 主线程在确认所有任务都已完成后，再统一汇总并写入最终图运行时状态。
         graphRuntime.compareAndSetState(GraphRuntimeState.RUNNING, finalState);
+    }
+
+    private <C> void publishGraphStarted(GraphRuntime<C> graphRuntime) {
+        observationDispatcher.dispatch(new GraphStartedEvent(
+                graphRuntime.getExecutionId(),
+                graphRuntime.getGraph().getGraphId(),
+                Instant.now()));
+    }
+
+    private <C> void publishGraphTimedOut(GraphRuntime<C> graphRuntime, Duration timeout) {
+        observationDispatcher.dispatch(new GraphTimedOutEvent(
+                graphRuntime.getExecutionId(),
+                graphRuntime.getGraph().getGraphId(),
+                Instant.now(),
+                timeout));
+    }
+
+    private <C> void publishGraphFinished(GraphRuntime<C> graphRuntime, GraphRuntimeState state) {
+        observationDispatcher.dispatch(new GraphFinishedEvent(
+                graphRuntime.getExecutionId(),
+                graphRuntime.getGraph().getGraphId(),
+                Instant.now(),
+                state,
+                Duration.ofNanos(System.nanoTime() - graphRuntime.getGraphStartNanoTime())));
+    }
+
+    private <C> void publishTaskStarted(GraphRuntime<C> graphRuntime, String taskId) {
+        TaskNodeRuntime<C> taskRuntime = graphRuntime.getTaskNodeRuntimeMap().get(taskId);
+        observationDispatcher.dispatch(new TaskStartedEvent(
+                graphRuntime.getExecutionId(),
+                graphRuntime.getGraph().getGraphId(),
+                Instant.now(),
+                taskId,
+                taskQueueDuration(taskRuntime)));
+    }
+
+    private <C> void publishTaskSucceeded(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime) {
+        observationDispatcher.dispatch(new TaskSucceededEvent(
+                graphRuntime.getExecutionId(),
+                graphRuntime.getGraph().getGraphId(),
+                Instant.now(),
+                taskRuntime.getTaskNode().getTaskId(),
+                taskDuration(taskRuntime)));
+    }
+
+    private <C> void publishTaskFailed(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime, Throwable cause) {
+        observationDispatcher.dispatch(new TaskFailedEvent(
+                graphRuntime.getExecutionId(),
+                graphRuntime.getGraph().getGraphId(),
+                Instant.now(),
+                taskRuntime.getTaskNode().getTaskId(),
+                cause,
+                taskDuration(taskRuntime)));
+    }
+
+    private <C> void publishTaskSubmissionFailed(GraphRuntime<C> graphRuntime,
+                                                 TaskNodeRuntime<C> taskRuntime,
+                                                 Throwable cause) {
+        observationDispatcher.dispatch(new TaskSubmissionFailedEvent(
+                graphRuntime.getExecutionId(),
+                graphRuntime.getGraph().getGraphId(),
+                Instant.now(),
+                taskRuntime.getTaskNode().getTaskId(),
+                cause));
+    }
+
+    private <C> void publishTaskSkipped(GraphRuntime<C> graphRuntime, String taskId, String triggeredByTaskId) {
+        observationDispatcher.dispatch(new TaskSkippedEvent(
+                graphRuntime.getExecutionId(),
+                graphRuntime.getGraph().getGraphId(),
+                Instant.now(),
+                taskId,
+                triggeredByTaskId));
+    }
+
+    private <C> Duration taskDuration(TaskNodeRuntime<C> taskRuntime) {
+        long startedNanoTime = taskRuntime.getStartedNanoTime();
+        if (startedNanoTime < 0L) {
+            return Duration.ZERO;
+        }
+        // 这里只统计真正开始执行后的耗时，不把线程池排队时间算进去。
+        return Duration.ofNanos(System.nanoTime() - startedNanoTime);
+    }
+
+    private <C> Duration taskQueueDuration(TaskNodeRuntime<C> taskRuntime) {
+        if (taskRuntime == null) {
+            return Duration.ZERO;
+        }
+        long submittedNanoTime = taskRuntime.getSubmittedNanoTime();
+        long startedNanoTime = taskRuntime.getStartedNanoTime();
+        if (submittedNanoTime < 0L || startedNanoTime < 0L || startedNanoTime < submittedNanoTime) {
+            return Duration.ZERO;
+        }
+        // 排队耗时 = 提交进入线程池调度后，到真正拿到执行线程之间的时间差。
+        return Duration.ofNanos(startedNanoTime - submittedNanoTime);
     }
 }

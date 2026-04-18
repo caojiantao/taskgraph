@@ -19,6 +19,7 @@
 - 同步阻塞执行入口
 - 任务级超时、图级超时
 - 固定失败语义：失败任务跳过后继子图，无关分支继续
+- 标准运行时观测 SPI
 - 极简执行结果：`GraphExecutionResult`
 
 ## 快速开始
@@ -51,14 +52,44 @@ TaskGraph<Map<String, Object>> graph = TaskGraph.<Map<String, Object>>builder()
                 .build())
         .build();
 
-// 3. 构造执行请求。
+// 3. 可选：注册运行时观测处理器。
+GraphObservationHandler<TaskFailedEvent> failedHandler =
+        new GraphObservationHandler<TaskFailedEvent>() {
+            @Override
+            public Class<TaskFailedEvent> eventType() {
+                return TaskFailedEvent.class;
+            }
+
+            @Override
+            public void handle(TaskFailedEvent event) {
+                System.out.println("task failed: " + event.getTaskId() + ", cause=" + event.getCause());
+            }
+        };
+
+GraphObservationHandler<GraphFinishedEvent> finishedHandler =
+        new GraphObservationHandler<GraphFinishedEvent>() {
+            @Override
+            public Class<GraphFinishedEvent> eventType() {
+                return GraphFinishedEvent.class;
+            }
+
+            @Override
+            public void handle(GraphFinishedEvent event) {
+                System.out.println("graph finished: " + event.getState() + ", duration=" + event.getDuration());
+            }
+        };
+
+GraphObservationDispatcher dispatcher =
+        new GraphObservationDispatcher(Arrays.asList(failedHandler, finishedHandler));
+
+// 4. 构造执行请求。
 GraphExecutionRequest<Map<String, Object>> request = GraphExecutionRequest.<Map<String, Object>>builder()
         .graph(graph)
         .context(context)
         .build();
 
-// 4. 执行图并获取结果。
-GraphExecutionResult result = new DefaultGraphExecutor().execute(request);
+// 5. 执行图并获取结果；如果不需要观测，直接 new DefaultGraphExecutor() 即可。
+GraphExecutionResult result = new DefaultGraphExecutor(dispatcher).execute(request);
 ```
 
 ### Spring 使用
@@ -133,6 +164,6 @@ public class DetailService {
 
 ## 后续展望
 
-- 监控与运行时可观测性
+- 日志、指标与 Tracing 集成
 - 线程池治理与参数动态下发
 - 更丰富的测试样例和最佳实践

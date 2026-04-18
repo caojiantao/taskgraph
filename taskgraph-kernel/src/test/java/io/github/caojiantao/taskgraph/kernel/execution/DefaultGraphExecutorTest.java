@@ -2,7 +2,6 @@ package io.github.caojiantao.taskgraph.kernel.execution;
 
 import io.github.caojiantao.taskgraph.kernel.graph.TaskNode;
 import io.github.caojiantao.taskgraph.kernel.graph.TaskGraph;
-import io.github.caojiantao.taskgraph.kernel.exception.TaskExecutionException;
 import io.github.caojiantao.taskgraph.kernel.result.GraphExecutionResult;
 import io.github.caojiantao.taskgraph.kernel.result.GraphRuntimeState;
 import org.junit.jupiter.api.Test;
@@ -200,9 +199,7 @@ class DefaultGraphExecutorTest {
             // 这里要明确证明命中的是“提交被线程池拒绝”分支，而不是普通任务执行异常。
             assertThat(result.getState()).isEqualTo(GraphRuntimeState.DEGRADED);
             assertThat(errorHandlerCalls.get()).isEqualTo(1);
-            assertThat(failureRef.get()).isInstanceOf(TaskExecutionException.class);
-            assertThat(failureRef.get()).hasMessageContaining("submission rejected");
-            assertThat(failureRef.get().getCause()).isInstanceOf(RejectedExecutionException.class);
+            assertThat(failureRef.get()).isInstanceOf(RejectedExecutionException.class);
             assertThat(executed).contains("ads");
             assertThat(executed).doesNotContain("product", "promotion");
         } finally {

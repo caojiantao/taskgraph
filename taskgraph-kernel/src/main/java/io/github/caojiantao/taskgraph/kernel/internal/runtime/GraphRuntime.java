@@ -16,15 +16,23 @@ import java.util.concurrent.atomic.AtomicReference;
 @Getter
 public final class GraphRuntime<C> {
 
+    private final String executionId;
     private final TaskGraph<C> graph;
     private final C context;
+    private final long graphStartNanoTime;
     private final Map<String, TaskNodeRuntime<C>> taskNodeRuntimeMap;
     private final CountDownLatch completionLatch;
     private final AtomicReference<GraphRuntimeState> state;
 
-    public GraphRuntime(TaskGraph<C> graph, C context, Map<String, TaskNodeRuntime<C>> taskNodeRuntimeMap) {
+    public GraphRuntime(String executionId,
+                        TaskGraph<C> graph,
+                        C context,
+                        long graphStartNanoTime,
+                        Map<String, TaskNodeRuntime<C>> taskNodeRuntimeMap) {
+        this.executionId = executionId;
         this.graph = graph;
         this.context = context;
+        this.graphStartNanoTime = graphStartNanoTime;
         this.taskNodeRuntimeMap = taskNodeRuntimeMap;
         this.completionLatch = new CountDownLatch(taskNodeRuntimeMap.size());
         this.state = new AtomicReference<>(GraphRuntimeState.RUNNING);

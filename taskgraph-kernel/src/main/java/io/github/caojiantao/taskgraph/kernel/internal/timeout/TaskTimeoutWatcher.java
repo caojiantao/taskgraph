@@ -1,6 +1,6 @@
 package io.github.caojiantao.taskgraph.kernel.internal.timeout;
 
-import io.github.caojiantao.taskgraph.kernel.exception.TaskExecutionException;
+import io.github.caojiantao.taskgraph.kernel.exception.TaskTimeoutException;
 import io.github.caojiantao.taskgraph.kernel.internal.runtime.GraphRuntime;
 import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskNodeRuntime;
 import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskNodeRuntimeStatus;
@@ -39,7 +39,7 @@ public final class TaskTimeoutWatcher<C> implements Runnable {
             future.cancel(true);
         }
         timeoutHandler.onTaskTimeout(graphRuntime, taskRuntime,
-                new TaskExecutionException("task [" + taskRuntime.getTaskNode().getTaskId() + "] timed out"));
+                new TaskTimeoutException("task [" + taskRuntime.getTaskNode().getTaskId() + "] timed out"));
     }
 
     /**
