@@ -1,7 +1,7 @@
 package io.github.caojiantao.taskgraph.kernel.validation;
 
 import io.github.caojiantao.taskgraph.kernel.exception.GraphValidationException;
-import io.github.caojiantao.taskgraph.kernel.graph.TaskDefinition;
+import io.github.caojiantao.taskgraph.kernel.graph.TaskNode;
 import io.github.caojiantao.taskgraph.kernel.graph.TaskGraph;
 import org.junit.jupiter.api.Test;
 
@@ -11,7 +11,7 @@ import java.util.concurrent.Executors;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class DefaultTaskGraphDefinitionValidatorTest {
+class DefaultTaskGraphValidatorTest {
 
     @Test
     void shouldBuildValidGraph() {
@@ -21,7 +21,7 @@ class DefaultTaskGraphDefinitionValidatorTest {
                     .graphId("detail-page")
                     .executor(executor)
                     .addTask(task("product"))
-                    .addTask(TaskDefinition.<Object>builder()
+                    .addTask(TaskNode.<Object>builder()
                             .taskId("promotion")
                             .dependsOn("product")
                             .handler(context -> {
@@ -60,7 +60,7 @@ class DefaultTaskGraphDefinitionValidatorTest {
             assertThatThrownBy(() -> TaskGraph.<Object>builder()
                     .graphId("detail-page")
                     .executor(executor)
-                    .addTask(TaskDefinition.<Object>builder()
+                    .addTask(TaskNode.<Object>builder()
                             .taskId("promotion")
                             .dependsOn("product")
                             .handler(context -> {
@@ -81,13 +81,13 @@ class DefaultTaskGraphDefinitionValidatorTest {
             assertThatThrownBy(() -> TaskGraph.<Object>builder()
                     .graphId("detail-page")
                     .executor(executor)
-                    .addTask(TaskDefinition.<Object>builder()
+                    .addTask(TaskNode.<Object>builder()
                             .taskId("a")
                             .dependsOn("b")
                             .handler(context -> {
                             })
                             .build())
-                    .addTask(TaskDefinition.<Object>builder()
+                    .addTask(TaskNode.<Object>builder()
                             .taskId("b")
                             .dependsOn("a")
                             .handler(context -> {
@@ -126,8 +126,8 @@ class DefaultTaskGraphDefinitionValidatorTest {
         }
     }
 
-    private TaskDefinition<Object> task(String taskId) {
-        return TaskDefinition.<Object>builder()
+    private TaskNode<Object> task(String taskId) {
+        return TaskNode.<Object>builder()
                 .taskId(taskId)
                 .handler(context -> {
                 })

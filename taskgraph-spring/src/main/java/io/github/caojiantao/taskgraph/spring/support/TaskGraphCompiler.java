@@ -1,7 +1,7 @@
 package io.github.caojiantao.taskgraph.spring.support;
 
 import io.github.caojiantao.taskgraph.kernel.exception.GraphValidationException;
-import io.github.caojiantao.taskgraph.kernel.graph.TaskDefinition;
+import io.github.caojiantao.taskgraph.kernel.graph.TaskNode;
 import io.github.caojiantao.taskgraph.kernel.graph.TaskGraph;
 import io.github.caojiantao.taskgraph.spring.annotation.TaskGraphDefinition;
 import io.github.caojiantao.taskgraph.spring.annotation.TaskNodeDefinition;
@@ -57,7 +57,7 @@ public final class TaskGraphCompiler {
                         "bean [" + beanName + "] in graph [" + graphDefinition.graphId() + "] missing @TaskNodeDefinition");
             }
 
-            graphBuilder.addTask(buildTaskDefinition(beanName, bean, nodeDefinition));
+            graphBuilder.addTask(buildTaskNode(beanName, bean, nodeDefinition));
         }
 
         return graphBuilder.build();
@@ -102,12 +102,12 @@ public final class TaskGraphCompiler {
     }
 
     @SuppressWarnings("unchecked")
-    private TaskDefinition<Object> buildTaskDefinition(String beanName,
+    private TaskNode<Object> buildTaskNode(String beanName,
                                                        Object bean,
                                                        TaskNodeDefinition nodeDefinition) {
         GraphTask<Object> graphTask = castGraphTask(beanName, bean);
         // 真正执行时仍然调用 Spring 容器里的 Bean 实例，这样事务、AOP 等增强都还能生效。
-        TaskDefinition.TaskDefinitionBuilder<Object> builder = TaskDefinition.<Object>builder()
+        TaskNode.TaskNodeBuilder<Object> builder = TaskNode.<Object>builder()
                 .taskId(nodeDefinition.taskId())
                 .executor(resolveExecutor(nodeDefinition.executor()))
                 .timeoutMillis(resolveTimeout(nodeDefinition.timeoutMillis()))

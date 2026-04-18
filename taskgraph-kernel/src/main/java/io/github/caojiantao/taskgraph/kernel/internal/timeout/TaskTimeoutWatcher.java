@@ -2,8 +2,8 @@ package io.github.caojiantao.taskgraph.kernel.internal.timeout;
 
 import io.github.caojiantao.taskgraph.kernel.exception.TaskExecutionException;
 import io.github.caojiantao.taskgraph.kernel.internal.runtime.GraphRuntime;
-import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskRuntime;
-import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskRuntimeStatus;
+import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskNodeRuntime;
+import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskNodeRuntimeStatus;
 
 import java.util.concurrent.Future;
 
@@ -13,11 +13,11 @@ import java.util.concurrent.Future;
 public final class TaskTimeoutWatcher<C> implements Runnable {
 
     private final GraphRuntime<C> graphRuntime;
-    private final TaskRuntime<C> taskRuntime;
+    private final TaskNodeRuntime<C> taskRuntime;
     private final TaskTimeoutHandler<C> timeoutHandler;
 
     public TaskTimeoutWatcher(GraphRuntime<C> graphRuntime,
-                              TaskRuntime<C> taskRuntime,
+                              TaskNodeRuntime<C> taskRuntime,
                               TaskTimeoutHandler<C> timeoutHandler) {
         this.graphRuntime = graphRuntime;
         this.taskRuntime = taskRuntime;
@@ -29,7 +29,7 @@ public final class TaskTimeoutWatcher<C> implements Runnable {
         if (!graphRuntime.isExecutionActive()) {
             return;
         }
-        if (!taskRuntime.compareAndSetStatus(TaskRuntimeStatus.RUNNING, TaskRuntimeStatus.FAILED)) {
+        if (!taskRuntime.compareAndSetStatus(TaskNodeRuntimeStatus.RUNNING, TaskNodeRuntimeStatus.FAILED)) {
             return;
         }
 
@@ -39,7 +39,7 @@ public final class TaskTimeoutWatcher<C> implements Runnable {
             future.cancel(true);
         }
         timeoutHandler.onTaskTimeout(graphRuntime, taskRuntime,
-                new TaskExecutionException("task [" + taskRuntime.getDefinition().getTaskId() + "] timed out"));
+                new TaskExecutionException("task [" + taskRuntime.getTaskNode().getTaskId() + "] timed out"));
     }
 
     /**
@@ -47,6 +47,6 @@ public final class TaskTimeoutWatcher<C> implements Runnable {
      */
     public interface TaskTimeoutHandler<C> {
 
-        void onTaskTimeout(GraphRuntime<C> graphRuntime, TaskRuntime<C> taskRuntime, Throwable cause);
+        void onTaskTimeout(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime, Throwable cause);
     }
 }

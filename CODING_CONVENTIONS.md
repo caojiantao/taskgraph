@@ -5,7 +5,7 @@
 ## 1. 包结构约定
 
 - `io.github.caojiantao.taskgraph.kernel.graph`
-  只放定义期模型，例如 `TaskGraph`、`TaskDefinition`、`TaskGraphRegistry`。
+  只放定义期模型，例如 `TaskGraph`、`TaskNode`、`TaskGraphRegistry`。
 - `io.github.caojiantao.taskgraph.kernel.execution`
   只放执行入口、执行请求、执行器工厂等对外执行相关类型。
 - `io.github.caojiantao.taskgraph.kernel.result`
@@ -57,7 +57,7 @@
 
 - `TaskGraph`
 - `TaskGraphRegistry`
-- `TaskDefinition`
+- `TaskNode`
 - `GraphExecutionRequest`
 - `GraphExecutionResult`
 - `GraphRuntimeState`

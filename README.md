@@ -13,7 +13,7 @@
 
 ## 当前能力
 
-- 不可变图定义模型：`TaskGraph`、`TaskDefinition`
+- 不可变图定义模型：`TaskGraph`、`TaskNode`
 - 定义期校验与注册期校验
 - 单机进程内 DAG 依赖调度
 - 同步阻塞执行入口
@@ -37,11 +37,11 @@ TaskGraph<Map<String, Object>> graph = TaskGraph.<Map<String, Object>>builder()
         .graphId("detail-page")
         .executor(executor)
         .timeoutMillis(1000L)
-        .addTask(TaskDefinition.<Map<String, Object>>builder()
+        .addTask(TaskNode.<Map<String, Object>>builder()
                 .taskId("product")
                 .handler(ctx -> ctx.put("product", "iPhone"))
                 .build())
-        .addTask(TaskDefinition.<Map<String, Object>>builder()
+        .addTask(TaskNode.<Map<String, Object>>builder()
                 .taskId("promotion")
                 .dependsOn("product")
                 .executor(promotionExecutor)

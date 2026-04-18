@@ -1,7 +1,7 @@
 package io.github.caojiantao.taskgraph.kernel.validation;
 
 import io.github.caojiantao.taskgraph.kernel.exception.GraphValidationException;
-import io.github.caojiantao.taskgraph.kernel.graph.TaskDefinition;
+import io.github.caojiantao.taskgraph.kernel.graph.TaskNode;
 import io.github.caojiantao.taskgraph.kernel.graph.TaskGraph;
 import org.junit.jupiter.api.Test;
 
@@ -34,7 +34,7 @@ class DefaultTaskGraphRegistryValidatorTest {
         return TaskGraph.<Object>builder()
                 .graphId(graphId)
                 .executor(executor)
-                .addTask(TaskDefinition.<Object>builder()
+                .addTask(TaskNode.<Object>builder()
                         .taskId(taskId)
                         .handler(context -> {
                         })

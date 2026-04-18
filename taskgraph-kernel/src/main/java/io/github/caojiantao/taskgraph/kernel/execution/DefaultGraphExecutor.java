@@ -2,10 +2,10 @@ package io.github.caojiantao.taskgraph.kernel.execution;
 
 import io.github.caojiantao.taskgraph.kernel.exception.GraphExecutionException;
 import io.github.caojiantao.taskgraph.kernel.exception.TaskExecutionException;
-import io.github.caojiantao.taskgraph.kernel.graph.TaskDefinition;
+import io.github.caojiantao.taskgraph.kernel.graph.TaskNode;
 import io.github.caojiantao.taskgraph.kernel.internal.runtime.GraphRuntime;
-import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskRuntime;
-import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskRuntimeStatus;
+import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskNodeRuntime;
+import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskNodeRuntimeStatus;
 import io.github.caojiantao.taskgraph.kernel.internal.scheduler.TaskDispatcher;
 import io.github.caojiantao.taskgraph.kernel.internal.support.KernelDefaults;
 import io.github.caojiantao.taskgraph.kernel.internal.timeout.TimeoutSchedulerHolder;
@@ -59,7 +59,7 @@ public final class DefaultGraphExecutor implements GraphExecutor {
         if (!completed) {
             // 图级超时一旦发生，先收敛图运行时状态，再尽力取消尚未完成的任务。
             graphRuntime.markTimedOut();
-            TaskDispatcher.cancelRunningTasks(graphRuntime.getTaskRuntimeMap().values());
+            TaskDispatcher.cancelRunningTasks(graphRuntime.getTaskNodeRuntimeMap().values());
         } else {
             resolveGraphStateOnMainThread(graphRuntime);
         }
@@ -71,17 +71,17 @@ public final class DefaultGraphExecutor implements GraphExecutor {
         return GraphExecutionResult.of(state);
     }
 
-    public <C> void runTask(GraphRuntime<C> graphRuntime, TaskRuntime<C> taskRuntime) {
+    public <C> void runTask(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime) {
         Throwable failure = null;
         try {
             if (!graphRuntime.isExecutionActive()) {
                 return;
             }
 
-            TaskDefinition<C> definition = taskRuntime.getDefinition();
-            definition.getHandler().handle(graphRuntime.getContext());
+            TaskNode<C> taskNode = taskRuntime.getTaskNode();
+            taskNode.getHandler().handle(graphRuntime.getContext());
 
-            if (!taskRuntime.compareAndSetStatus(TaskRuntimeStatus.RUNNING, TaskRuntimeStatus.SUCCESS)) {
+            if (!taskRuntime.compareAndSetStatus(TaskNodeRuntimeStatus.RUNNING, TaskNodeRuntimeStatus.SUCCESS)) {
                 return;
             }
             onTaskFinished(graphRuntime, taskRuntime);
@@ -92,57 +92,57 @@ public final class DefaultGraphExecutor implements GraphExecutor {
             if (!graphRuntime.isExecutionActive()) {
                 return;
             }
-            if (!taskRuntime.compareAndSetStatus(TaskRuntimeStatus.RUNNING, TaskRuntimeStatus.FAILED)) {
+            if (!taskRuntime.compareAndSetStatus(TaskNodeRuntimeStatus.RUNNING, TaskNodeRuntimeStatus.FAILED)) {
                 return;
             }
             handleTaskFailure(graphRuntime, taskRuntime,
                     cause instanceof TaskExecutionException ? cause : new TaskExecutionException(
-                            "task [" + taskRuntime.getDefinition().getTaskId() + "] execution failed", cause));
+                            "task [" + taskRuntime.getTaskNode().getTaskId() + "] execution failed", cause));
         } finally {
             TaskDispatcher.cancelTaskWatcher(taskRuntime);
             restoreInterruptFlagIfNeeded(failure);
         }
     }
 
-    public <C> void onTaskTimeout(GraphRuntime<C> graphRuntime, TaskRuntime<C> taskRuntime, Throwable cause) {
+    public <C> void onTaskTimeout(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime, Throwable cause) {
         handleTaskFailure(graphRuntime, taskRuntime, cause);
     }
 
-    public <C> void onTaskSubmissionFailure(GraphRuntime<C> graphRuntime, TaskRuntime<C> taskRuntime, Throwable cause) {
+    public <C> void onTaskSubmissionFailure(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime, Throwable cause) {
         if (!graphRuntime.isExecutionActive()) {
             return;
         }
-        if (!taskRuntime.compareAndSetStatus(TaskRuntimeStatus.RUNNING, TaskRuntimeStatus.FAILED)) {
+        if (!taskRuntime.compareAndSetStatus(TaskNodeRuntimeStatus.RUNNING, TaskNodeRuntimeStatus.FAILED)) {
             return;
         }
         handleTaskFailure(graphRuntime, taskRuntime, cause);
     }
 
-    protected <C> void handleTaskFailure(GraphRuntime<C> graphRuntime, TaskRuntime<C> taskRuntime, Throwable cause) {
+    protected <C> void handleTaskFailure(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime, Throwable cause) {
         invokeErrorHandler(graphRuntime, taskRuntime, cause);
         onTaskFinished(graphRuntime, taskRuntime);
         // 默认失败语义是“跳过失败任务的整个后继子图”，而不是立刻终止无关分支。
-        skipDescendants(graphRuntime, taskRuntime.getDefinition().getTaskId());
+        skipDescendants(graphRuntime, taskRuntime.getTaskNode().getTaskId());
     }
 
-    private <C> void invokeErrorHandler(GraphRuntime<C> graphRuntime, TaskRuntime<C> taskRuntime, Throwable cause) {
-        if (taskRuntime.getDefinition().getErrorHandler() == null) {
+    private <C> void invokeErrorHandler(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime, Throwable cause) {
+        if (taskRuntime.getTaskNode().getErrorHandler() == null) {
             return;
         }
         try {
-            taskRuntime.getDefinition().getErrorHandler().handle(graphRuntime.getContext(), cause);
+            taskRuntime.getTaskNode().getErrorHandler().handle(graphRuntime.getContext(), cause);
         } catch (Throwable ignored) {
             // errorHandler 属于 best-effort 回调，不能反过来打断图运行时状态收敛。
         }
     }
 
-    private <C> void releaseDownstream(GraphRuntime<C> graphRuntime, TaskRuntime<C> taskRuntime) {
+    private <C> void releaseDownstream(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime) {
         if (!graphRuntime.isExecutionActive()) {
             return;
         }
         for (String downstreamTaskId : taskRuntime.getDownstreamTaskIds()) {
-            TaskRuntime<C> downstreamRuntime = graphRuntime.getTaskRuntimeMap().get(downstreamTaskId);
-            if (downstreamRuntime == null || downstreamRuntime.getStatus().get() != TaskRuntimeStatus.PENDING) {
+            TaskNodeRuntime<C> downstreamRuntime = graphRuntime.getTaskNodeRuntimeMap().get(downstreamTaskId);
+            if (downstreamRuntime == null || downstreamRuntime.getStatus().get() != TaskNodeRuntimeStatus.PENDING) {
                 continue;
             }
             int remaining = downstreamRuntime.getRemainingDependencies().decrementAndGet();
@@ -157,18 +157,18 @@ public final class DefaultGraphExecutor implements GraphExecutor {
         queue.addLast(failedTaskId);
         while (!queue.isEmpty()) {
             String currentTaskId = queue.removeFirst();
-            TaskRuntime<C> currentRuntime = graphRuntime.getTaskRuntimeMap().get(currentTaskId);
+            TaskNodeRuntime<C> currentRuntime = graphRuntime.getTaskNodeRuntimeMap().get(currentTaskId);
             if (currentRuntime == null) {
                 continue;
             }
             Set<String> downstreamTaskIds = currentRuntime.getDownstreamTaskIds();
             for (String downstreamTaskId : downstreamTaskIds) {
-                TaskRuntime<C> downstreamRuntime = graphRuntime.getTaskRuntimeMap().get(downstreamTaskId);
+                TaskNodeRuntime<C> downstreamRuntime = graphRuntime.getTaskNodeRuntimeMap().get(downstreamTaskId);
                 if (downstreamRuntime == null) {
                     continue;
                 }
                 // 只有还没开始执行的后继任务才会被标记成 SKIPPED，已运行中的任务不在这里强行改状态。
-                if (downstreamRuntime.compareAndSetStatus(TaskRuntimeStatus.PENDING, TaskRuntimeStatus.SKIPPED)) {
+                if (downstreamRuntime.compareAndSetStatus(TaskNodeRuntimeStatus.PENDING, TaskNodeRuntimeStatus.SKIPPED)) {
                     onTaskFinished(graphRuntime, downstreamRuntime);
                     queue.addLast(downstreamTaskId);
                 }
@@ -182,16 +182,16 @@ public final class DefaultGraphExecutor implements GraphExecutor {
         }
     }
 
-    private <C> void onTaskFinished(GraphRuntime<C> graphRuntime, TaskRuntime<C> taskRuntime) {
+    private <C> void onTaskFinished(GraphRuntime<C> graphRuntime, TaskNodeRuntime<C> taskRuntime) {
         // 每个任务第一次进入运行时终态时，对整图完成计数执行一次 countDown。
         graphRuntime.getCompletionLatch().countDown();
     }
 
     private <C> void resolveGraphStateOnMainThread(GraphRuntime<C> graphRuntime) {
         GraphRuntimeState finalState = GraphRuntimeState.SUCCESS;
-        for (TaskRuntime<C> taskRuntime : graphRuntime.getTaskRuntimeMap().values()) {
-            TaskRuntimeStatus taskState = taskRuntime.getStatus().get();
-            if (taskState == TaskRuntimeStatus.FAILED || taskState == TaskRuntimeStatus.SKIPPED) {
+        for (TaskNodeRuntime<C> taskRuntime : graphRuntime.getTaskNodeRuntimeMap().values()) {
+            TaskNodeRuntimeStatus taskState = taskRuntime.getStatus().get();
+            if (taskState == TaskNodeRuntimeStatus.FAILED || taskState == TaskNodeRuntimeStatus.SKIPPED) {
                 finalState = GraphRuntimeState.DEGRADED;
                 break;
             }

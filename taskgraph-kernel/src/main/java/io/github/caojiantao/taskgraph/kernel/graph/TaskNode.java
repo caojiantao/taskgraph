@@ -15,7 +15,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 
 /**
- * 定义在 {@link TaskGraph} 中的不可变任务定义。
+ * 定义在 {@link TaskGraph} 中的不可变任务节点模型。
  *
  * @param <C> 执行上下文类型
  */
@@ -24,7 +24,7 @@ import java.util.concurrent.ExecutorService;
 @EqualsAndHashCode
 @Builder(toBuilder = true)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-public final class TaskDefinition<C> {
+public final class TaskNode<C> {
 
     /**
      * 任务标识，只要求在单图内唯一。

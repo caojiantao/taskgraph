@@ -1,6 +1,6 @@
 package io.github.caojiantao.taskgraph.kernel.execution;
 
-import io.github.caojiantao.taskgraph.kernel.graph.TaskDefinition;
+import io.github.caojiantao.taskgraph.kernel.graph.TaskNode;
 import io.github.caojiantao.taskgraph.kernel.graph.TaskGraph;
 import io.github.caojiantao.taskgraph.kernel.exception.TaskExecutionException;
 import io.github.caojiantao.taskgraph.kernel.result.GraphExecutionResult;
@@ -31,11 +31,11 @@ class DefaultGraphExecutorTest {
                     .graphId("detail-page")
                     .executor(executor)
                     .timeoutMillis(1000L)
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("product")
                             .handler(context -> order.add("product"))
                             .build())
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("promotion")
                             .dependsOn("product")
                             .handler(context -> order.add("promotion"))
@@ -60,11 +60,11 @@ class DefaultGraphExecutorTest {
                     .graphId("detail-page")
                     .executor(executor)
                     .timeoutMillis(1000L)
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("product")
                             .handler(context -> executed.add("product"))
                             .build())
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("ads")
                             .handler(context -> executed.add("ads"))
                             .build())
@@ -89,21 +89,21 @@ class DefaultGraphExecutorTest {
                     .graphId("detail-page")
                     .executor(executor)
                     .timeoutMillis(1000L)
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("product")
                             .handler(ctx -> {
                                 ctx.put("product", Boolean.TRUE);
                                 executed.add("product");
                             })
                             .build())
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("inventory")
                             .handler(ctx -> {
                                 ctx.put("inventory", Boolean.TRUE);
                                 executed.add("inventory");
                             })
                             .build())
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("summary")
                             .dependsOn("product")
                             .dependsOn("inventory")
@@ -134,19 +134,19 @@ class DefaultGraphExecutorTest {
                     .graphId("detail-page")
                     .executor(executor)
                     .timeoutMillis(1000L)
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("product")
                             .handler(context -> {
                                 executed.add("product");
                                 throw new IllegalStateException("boom");
                             })
                             .build())
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("promotion")
                             .dependsOn("product")
                             .handler(context -> executed.add("promotion"))
                             .build())
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("ads")
                             .handler(context -> executed.add("ads"))
                             .build())
@@ -175,7 +175,7 @@ class DefaultGraphExecutorTest {
                     .graphId("detail-page")
                     .executor(graphExecutor)
                     .timeoutMillis(1000L)
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("product")
                             .executor(rejectedExecutor)
                             .handler(ctx -> executed.add("product"))
@@ -184,12 +184,12 @@ class DefaultGraphExecutorTest {
                                 failureRef.set(cause);
                             })
                             .build())
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("promotion")
                             .dependsOn("product")
                             .handler(ctx -> executed.add("promotion"))
                             .build())
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("ads")
                             .handler(ctx -> executed.add("ads"))
                             .build())
@@ -219,11 +219,11 @@ class DefaultGraphExecutorTest {
                     .graphId("detail-page")
                     .executor(executor)
                     .timeoutMillis(50L)
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("fast")
                             .handler(ctx -> ctx.put("fast", Boolean.TRUE))
                             .build())
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("slow")
                             .dependsOn("fast")
                             .handler(ctx -> {
@@ -252,7 +252,7 @@ class DefaultGraphExecutorTest {
                     .graphId("detail-page")
                     .executor(executor)
                     .timeoutMillis(1000L)
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("slow")
                             .handler(ctx -> {
                                 executed.add("slow");
@@ -260,7 +260,7 @@ class DefaultGraphExecutorTest {
                             })
                             .timeoutMillis(50L)
                             .build())
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("downstream")
                             .dependsOn("slow")
                             .handler(ctx -> executed.add("downstream"))
@@ -287,7 +287,7 @@ class DefaultGraphExecutorTest {
                     .graphId("detail-page")
                     .executor(executor)
                     .timeoutMillis(50L)
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("slow")
                             .handler(ctx -> {
                                 started.countDown();
@@ -319,7 +319,7 @@ class DefaultGraphExecutorTest {
                     .graphId("detail-page")
                     .executor(executor)
                     .timeoutMillis(1000L)
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("product")
                             .handler(ctx -> {
                                 throw new IllegalStateException("boom");
@@ -347,7 +347,7 @@ class DefaultGraphExecutorTest {
                     .graphId("detail-page")
                     .executor(executor)
                     .timeoutMillis(1000L)
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("product")
                             .handler(ctx -> {
                                 if (invocation.incrementAndGet() == 1) {
@@ -380,7 +380,7 @@ class DefaultGraphExecutorTest {
                     .graphId("detail-page")
                     .executor(executor)
                     .timeoutMillis(1000L)
-                    .addTask(TaskDefinition.<Map<String, Object>>builder()
+                    .addTask(TaskNode.<Map<String, Object>>builder()
                             .taskId("product")
                             .handler(ctx -> {
                                 Thread.sleep(200L);

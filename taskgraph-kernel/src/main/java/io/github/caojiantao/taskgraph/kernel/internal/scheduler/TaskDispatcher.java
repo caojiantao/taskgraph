@@ -2,11 +2,11 @@ package io.github.caojiantao.taskgraph.kernel.internal.scheduler;
 
 import io.github.caojiantao.taskgraph.kernel.execution.DefaultGraphExecutor;
 import io.github.caojiantao.taskgraph.kernel.exception.TaskExecutionException;
-import io.github.caojiantao.taskgraph.kernel.graph.TaskDefinition;
+import io.github.caojiantao.taskgraph.kernel.graph.TaskNode;
 import io.github.caojiantao.taskgraph.kernel.graph.TaskGraph;
 import io.github.caojiantao.taskgraph.kernel.internal.runtime.GraphRuntime;
-import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskRuntime;
-import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskRuntimeStatus;
+import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskNodeRuntime;
+import io.github.caojiantao.taskgraph.kernel.internal.runtime.TaskNodeRuntimeStatus;
 import io.github.caojiantao.taskgraph.kernel.internal.support.KernelDefaults;
 import io.github.caojiantao.taskgraph.kernel.internal.timeout.TaskTimeoutWatcher;
 
@@ -33,23 +33,23 @@ public final class TaskDispatcher {
 
     public static <C> GraphRuntime<C> createRuntime(TaskGraph<C> graph, C context) {
         Map<String, Set<String>> downstreamMap = buildDownstreamMap(graph.getTasks());
-        Map<String, TaskRuntime<C>> taskRuntimeMap = new LinkedHashMap<>();
-        for (TaskDefinition<C> taskDefinition : graph.getTasks()) {
-            Set<String> downstreamTaskIds = downstreamMap.get(taskDefinition.getTaskId());
+        Map<String, TaskNodeRuntime<C>> taskNodeRuntimeMap = new LinkedHashMap<>();
+        for (TaskNode<C> taskNode : graph.getTasks()) {
+            Set<String> downstreamTaskIds = downstreamMap.get(taskNode.getTaskId());
             Set<String> immutableDownstream = downstreamTaskIds == null
                     ? Collections.emptySet()
                     : Collections.unmodifiableSet(new LinkedHashSet<>(downstreamTaskIds));
-            int dependencyCount = taskDefinition.getDependsOn() == null ? 0 : taskDefinition.getDependsOn().size();
-            taskRuntimeMap.put(taskDefinition.getTaskId(), new TaskRuntime<>(taskDefinition, dependencyCount, immutableDownstream));
+            int dependencyCount = taskNode.getDependsOn() == null ? 0 : taskNode.getDependsOn().size();
+            taskNodeRuntimeMap.put(taskNode.getTaskId(), new TaskNodeRuntime<>(taskNode, dependencyCount, immutableDownstream));
         }
         // 运行期状态与定义期图对象彻底分离，保证同一图可重复执行且互不污染。
-        return new GraphRuntime<>(graph, context, taskRuntimeMap);
+        return new GraphRuntime<>(graph, context, taskNodeRuntimeMap);
     }
 
     public static <C> void submitRootTasks(GraphRuntime<C> graphRuntime,
                                            ScheduledExecutorService timeoutScheduler,
                                            DefaultGraphExecutor executor) {
-        for (TaskRuntime<C> taskRuntime : graphRuntime.getTaskRuntimeMap().values()) {
+        for (TaskNodeRuntime<C> taskRuntime : graphRuntime.getTaskNodeRuntimeMap().values()) {
             // 根任务的剩余依赖数为 0，可以在图启动时直接提交。
             if (taskRuntime.getRemainingDependencies().get() == 0) {
                 submitTask(graphRuntime, taskRuntime, timeoutScheduler, executor);
@@ -58,19 +58,19 @@ public final class TaskDispatcher {
     }
 
     public static <C> void submitTask(GraphRuntime<C> graphRuntime,
-                                      TaskRuntime<C> taskRuntime,
+                                      TaskNodeRuntime<C> taskRuntime,
                                       ScheduledExecutorService timeoutScheduler,
                                       DefaultGraphExecutor executor) {
         if (!graphRuntime.isExecutionActive()) {
             return;
         }
-        if (!taskRuntime.compareAndSetStatus(TaskRuntimeStatus.PENDING, TaskRuntimeStatus.RUNNING)) {
+        if (!taskRuntime.compareAndSetStatus(TaskNodeRuntimeStatus.PENDING, TaskNodeRuntimeStatus.RUNNING)) {
             return;
         }
 
-        TaskDefinition<C> definition = taskRuntime.getDefinition();
-        ExecutorService effectiveExecutor = definition.getExecutor() != null
-                ? definition.getExecutor()
+        TaskNode<C> taskNode = taskRuntime.getTaskNode();
+        ExecutorService effectiveExecutor = taskNode.getExecutor() != null
+                ? taskNode.getExecutor()
                 : graphRuntime.getGraph().getExecutor();
 
         Future<?> future = null;
@@ -79,8 +79,8 @@ public final class TaskDispatcher {
             future = effectiveExecutor.submit(taskRunnable);
             taskRuntime.setFuture(future);
 
-            long timeoutMillis = definition.getTimeoutMillis() != null
-                    ? definition.getTimeoutMillis()
+            long timeoutMillis = taskNode.getTimeoutMillis() != null
+                    ? taskNode.getTimeoutMillis()
                     : KernelDefaults.DEFAULT_TASK_TIMEOUT_MILLIS;
             // 提交任务后立即注册任务级超时 watcher，但 watcher 本身只做轻量取消与回调。
             TaskTimeoutWatcher<C> watcher = new TaskTimeoutWatcher<>(graphRuntime, taskRuntime,
@@ -90,23 +90,23 @@ public final class TaskDispatcher {
         } catch (RejectedExecutionException ex) {
             cancelFutureIfNecessary(future);
             executor.onTaskSubmissionFailure(graphRuntime, taskRuntime,
-                    new TaskExecutionException("task [" + definition.getTaskId() + "] submission rejected", ex));
+                    new TaskExecutionException("task [" + taskNode.getTaskId() + "] submission rejected", ex));
         } catch (RuntimeException ex) {
             cancelFutureIfNecessary(future);
             executor.onTaskSubmissionFailure(graphRuntime, taskRuntime,
-                    new TaskExecutionException("task [" + definition.getTaskId() + "] submission failed", ex));
+                    new TaskExecutionException("task [" + taskNode.getTaskId() + "] submission failed", ex));
         }
     }
 
-    public static <C> void cancelTaskWatcher(TaskRuntime<C> taskRuntime) {
+    public static <C> void cancelTaskWatcher(TaskNodeRuntime<C> taskRuntime) {
         ScheduledFuture<?> timeoutWatcher = taskRuntime.getTimeoutWatcher();
         if (timeoutWatcher != null) {
             timeoutWatcher.cancel(false);
         }
     }
 
-    public static <C> void cancelRunningTasks(Collection<TaskRuntime<C>> taskRuntimes) {
-        for (TaskRuntime<C> taskRuntime : taskRuntimes) {
+    public static <C> void cancelRunningTasks(Collection<TaskNodeRuntime<C>> taskRuntimes) {
+        for (TaskNodeRuntime<C> taskRuntime : taskRuntimes) {
             cancelTaskWatcher(taskRuntime);
             Future<?> future = taskRuntime.getFuture();
             if (future != null && !future.isDone()) {
@@ -122,17 +122,17 @@ public final class TaskDispatcher {
         }
     }
 
-    private static <C> Map<String, Set<String>> buildDownstreamMap(java.util.List<TaskDefinition<C>> taskDefinitions) {
+    private static <C> Map<String, Set<String>> buildDownstreamMap(java.util.List<TaskNode<C>> taskNodes) {
         Map<String, Set<String>> downstreamMap = new LinkedHashMap<>();
-        for (TaskDefinition<C> taskDefinition : taskDefinitions) {
-            downstreamMap.put(taskDefinition.getTaskId(), new LinkedHashSet<>());
+        for (TaskNode<C> taskNode : taskNodes) {
+            downstreamMap.put(taskNode.getTaskId(), new LinkedHashSet<>());
         }
-        for (TaskDefinition<C> taskDefinition : taskDefinitions) {
-            if (taskDefinition.getDependsOn() == null) {
+        for (TaskNode<C> taskNode : taskNodes) {
+            if (taskNode.getDependsOn() == null) {
                 continue;
             }
-            for (String upstream : taskDefinition.getDependsOn()) {
-                downstreamMap.get(upstream).add(taskDefinition.getTaskId());
+            for (String upstream : taskNode.getDependsOn()) {
+                downstreamMap.get(upstream).add(taskNode.getTaskId());
             }
         }
         return downstreamMap;

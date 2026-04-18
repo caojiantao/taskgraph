@@ -1,6 +1,6 @@
 package io.github.caojiantao.taskgraph.kernel.internal.runtime;
 
-import io.github.caojiantao.taskgraph.kernel.graph.TaskDefinition;
+import io.github.caojiantao.taskgraph.kernel.graph.TaskNode;
 import lombok.Getter;
 
 import java.util.Set;
@@ -15,25 +15,25 @@ import java.util.concurrent.atomic.AtomicReference;
  * @param <C> 执行上下文类型
  */
 @Getter
-public final class TaskRuntime<C> {
+public final class TaskNodeRuntime<C> {
 
-    private final TaskDefinition<C> definition;
+    private final TaskNode<C> taskNode;
     private final Set<String> downstreamTaskIds;
     private final AtomicInteger remainingDependencies;
-    private final AtomicReference<TaskRuntimeStatus> status;
+    private final AtomicReference<TaskNodeRuntimeStatus> status;
     private final AtomicReference<Future<?>> futureRef;
     private final AtomicReference<ScheduledFuture<?>> timeoutWatcherRef;
 
-    public TaskRuntime(TaskDefinition<C> definition, int remainingDependencies, Set<String> downstreamTaskIds) {
-        this.definition = definition;
+    public TaskNodeRuntime(TaskNode<C> taskNode, int remainingDependencies, Set<String> downstreamTaskIds) {
+        this.taskNode = taskNode;
         this.downstreamTaskIds = downstreamTaskIds;
         this.remainingDependencies = new AtomicInteger(remainingDependencies);
-        this.status = new AtomicReference<>(TaskRuntimeStatus.PENDING);
+        this.status = new AtomicReference<>(TaskNodeRuntimeStatus.PENDING);
         this.futureRef = new AtomicReference<>();
         this.timeoutWatcherRef = new AtomicReference<>();
     }
 
-    public boolean compareAndSetStatus(TaskRuntimeStatus expected, TaskRuntimeStatus update) {
+    public boolean compareAndSetStatus(TaskNodeRuntimeStatus expected, TaskNodeRuntimeStatus update) {
         return status.compareAndSet(expected, update);
     }
 

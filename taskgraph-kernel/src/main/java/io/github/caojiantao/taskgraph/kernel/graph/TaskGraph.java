@@ -1,6 +1,6 @@
 package io.github.caojiantao.taskgraph.kernel.graph;
 
-import io.github.caojiantao.taskgraph.kernel.validation.DefaultTaskGraphDefinitionValidator;
+import io.github.caojiantao.taskgraph.kernel.validation.DefaultTaskGraphValidator;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -47,12 +47,12 @@ public final class TaskGraph<C> {
      * 图中声明的全部任务。
      */
     @Singular("addTask")
-    private final List<TaskDefinition<C>> tasks;
+    private final List<TaskNode<C>> tasks;
 
     public static class TaskGraphBuilder<C> {
 
         public TaskGraph<C> build() {
-            List<TaskDefinition<C>> immutableTasks;
+            List<TaskNode<C>> immutableTasks;
             if (this.tasks == null || this.tasks.isEmpty()) {
                 immutableTasks = Collections.emptyList();
             } else {
@@ -61,7 +61,7 @@ public final class TaskGraph<C> {
 
             TaskGraph<C> taskGraph = new TaskGraph<>(this.graphId, this.executor, this.timeoutMillis, immutableTasks);
             // 图一旦构建成功，就要求已经完成定义期校验，避免把结构问题拖到运行期。
-            DefaultTaskGraphDefinitionValidator.getInstance().validate(taskGraph);
+            DefaultTaskGraphValidator.getInstance().validate(taskGraph);
             return taskGraph;
         }
     }

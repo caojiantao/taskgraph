@@ -18,15 +18,15 @@ public final class GraphRuntime<C> {
 
     private final TaskGraph<C> graph;
     private final C context;
-    private final Map<String, TaskRuntime<C>> taskRuntimeMap;
+    private final Map<String, TaskNodeRuntime<C>> taskNodeRuntimeMap;
     private final CountDownLatch completionLatch;
     private final AtomicReference<GraphRuntimeState> state;
 
-    public GraphRuntime(TaskGraph<C> graph, C context, Map<String, TaskRuntime<C>> taskRuntimeMap) {
+    public GraphRuntime(TaskGraph<C> graph, C context, Map<String, TaskNodeRuntime<C>> taskNodeRuntimeMap) {
         this.graph = graph;
         this.context = context;
-        this.taskRuntimeMap = taskRuntimeMap;
-        this.completionLatch = new CountDownLatch(taskRuntimeMap.size());
+        this.taskNodeRuntimeMap = taskNodeRuntimeMap;
+        this.completionLatch = new CountDownLatch(taskNodeRuntimeMap.size());
         this.state = new AtomicReference<>(GraphRuntimeState.RUNNING);
     }
 

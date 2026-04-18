@@ -48,7 +48,7 @@ class TaskGraphRegistryTest {
         return TaskGraph.<Object>builder()
                 .graphId(graphId)
                 .executor(executor)
-                .addTask(TaskDefinition.<Object>builder()
+                .addTask(TaskNode.<Object>builder()
                         .taskId(taskId)
                         .handler(context -> {
                         })
